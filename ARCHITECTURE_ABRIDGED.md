@@ -6,13 +6,13 @@ This agent sits between clinicians and OpenEMR's FHIR R4 API, executing structur
 
 **Two-envelope safety model:**
 - **Ingress validation**: Parse user intent into typed workflows with explicit FHIR call limits (max 10/request)
-- **Egress verification**: 4-pass verification stack buffers responses, validates before streaming
+- **Egress verification**: Sonnet generates response, Haiku verifies in parallel. User sees output only after both complete.
 
 **Authorization without hardcoded rules:** JWT passthrough from SMART on FHIR OAuth means the agent inherits user permissions—if the clinician can't read a resource, neither can the agent. Zero authorization logic in our code.
 
-**Pre-warm pipeline:** FAQ pre-generation runs async after encounters close, caching common queries (e.g., "summarize today's visits") with 24h TTL. Suggestion chips surface these cached responses, avoiding cold-start latency for routine questions.
+**Pre-warm pipeline:** When clinician logs in, background jobs prefetch all patients on their schedule into Redis (FHIR metadata only). Avoids 2-second cold fetch in the 90-second patient review window.
 
-**Workflow architecture:** Router classifies intent → DAG executor runs typed nodes (read encounter, check vitals, draft summary) → 4-pass verification → stream response. Not conversational; more like GraphQL for clinical data with LLM-generated queries.
+**Workflow architecture:** Router classifies intent → DAG executor runs typed nodes (read encounter, check vitals, draft summary) → Parallel: Sonnet generates response + Haiku verifies → Stream after both complete. Not conversational; more like GraphQL for clinical data with LLM-generated queries.
 
 ---
 
@@ -30,37 +30,37 @@ Each node has explicit FHIR calls, success/failure modes, and retry logic. The L
 
 **Tradeoff:** Loses flexibility of open conversation but gains auditability, performance (parallel node execution), and verification (we know exactly what data informed each output).
 
-### 2. 4-Pass Verification Stack
+### 2. Two-Model Parallel Verification
 
-**Decision:** Buffer full response, run 4 verification passes, then stream.
+**Decision:** Sonnet generates response, Haiku verifies in parallel. User sees output only after both complete.
 
-**Passes:**
-1. **Citation grounding**: Every claim must reference a FHIR resource (Encounter ID, Observation ID, etc.)
-2. **LLM-as-judge** (Haiku): Check for hallucination, tone appropriateness, missing context
-3. **Deterministic domain rules**: Vitals out of range → flag; medication contraindications → block; age/gender mismatches → error
-4. **Cross-source consistency**: If two FHIR resources conflict (e.g., duplicate active medications), surface the discrepancy explicitly
+**Why two models, not one checking itself:** A model checking its own work inherits the same blind spots that produced the error. Two models with different prompts catch what one won't.
 
-**Why:** Healthcare AI needs defense-in-depth. LLMs alone miss edge cases (Haiku catches most hallucinations but not domain-specific errors like dangerous drug interactions). Deterministic rules catch those. Cross-source consistency handles EHR data quality issues.
+**Haiku verification checks:**
+- Citation grounding (every claim references a FHIR resource ID)
+- Hallucination detection (contradictions, unsupported claims)
+- Domain rules (drug interactions, abnormal vitals, contraindications)
+- Tone appropriateness (clinical, not casual)
 
-**Tradeoff:** Adds 200-400ms latency (buffering + verification) vs streaming immediately. Worth it—silent failures in clinical contexts are unacceptable.
+**Why parallel, not sequential:** Running verification in parallel means zero added latency from user's perspective. Both complete in ~1-2 seconds; streaming starts only when verification passes.
 
-### 3. Pre-Warm Pipeline with FAQ Pre-Generation
+**Tradeoff:** More complex than one model, higher cost (two LLM calls), but catches errors single-model architectures miss.
 
-**Decision:** After encounter state changes (closed, updated), async worker generates answers to common queries and caches them (24h TTL).
+### 3. Pre-Warm Patient Context on Schedule Load
 
-**Common queries:**
-- "Summarize today's visits"
-- "Any abnormal vitals?"
-- "Pending orders for [patient]"
+**Decision:** When clinician logs in, background jobs prefetch all patients on their schedule into Redis (FHIR metadata and resource URLs only, 15-minute TTL).
 
-**Why:** Cold-start latency (LLM call + FHIR fetches + verification) averages 2-3 seconds. Pre-warming common queries drops this to <200ms for cache hits. Clinicians asking predictable questions get instant responses.
+**Why:** In a 90-second patient review window, even a 2-second cold FHIR fetch breaks workflow. Pre-warming patients they might see eliminates wait time for patients they actually open.
 
-**Implementation:**
-- Redis cache stores FHIR URLs and metadata (not PHI)
-- Suggestion chips in UI surface cached queries
-- Cache invalidation on encounter updates (vitals added, meds changed)
+**What gets cached:**
+- Patient demographics URL (`/Patient/123`)
+- Vitals URL (`/Observation?patient=123&category=vital-signs`)
+- Active medications URL (`/MedicationRequest?patient=123&status=active`)
+- Last encounter date (for sorting recent patients first)
 
-**Tradeoff:** Increases backend cost (async FAQ generation) but massively improves UX for routine queries. 24h TTL balances freshness and cost.
+**Why URLs not data:** Caching FHIR resource URLs avoids storing PHI in Redis. Actual data fetched on-demand with JWT passthrough for authorization.
+
+**Tradeoff:** Burns compute pre-warming patients the clinician might skip, but eliminates latency for patients they actually see. In clinical workflows, avoiding 2-second delays is worth the cost.
 
 ### 4. Specific Failure Mode Behaviors
 
@@ -83,46 +83,46 @@ Each node has explicit FHIR calls, success/failure modes, and retry logic. The L
 ## Technology Stack
 
 **Agent Service:**
-- TypeScript + Hono (lightweight, edge-deployable)
-- Claude Sonnet 4.8 (intent classification, DAG generation)
-- Claude Opus 4.7 (complex summaries, multi-patient workflows)
-- Claude Haiku 4.5 (LLM-as-judge verification)
+- Python 3.11 + FastAPI (async, type-safe, healthcare library ecosystem)
+- Claude Sonnet 4.6 (router, DAG generation, response synthesis)
+- Claude Haiku 4.5 (parallel verification, citation checking)
 
 **Data Layer:**
 - Postgres (audit log with hash chaining for tamper detection)
-- Redis (cache metadata, max 24h TTL, no PHI storage)
+- Redis (cache FHIR URLs and metadata, 15-minute TTL, no PHI storage)
 
 **EHR Integration:**
-- SMART on FHIR (OAuth + PKCE, no custom auth)
-- JWT passthrough for authorization (zero hardcoded permission logic)
+- OpenEMR FHIR R4 API
+- JWT passthrough for authorization (inherits OpenEMR ACL, zero hardcoded permission logic)
 
 **Observability:**
-- Langfuse Cloud HIPAA region (request tracing, LLM logs)
+- Langfuse (request tracing, redacted LLM logs)
 - All FHIR calls logged to Postgres audit table
 
 ---
 
 ## Verification Strategy Deep Dive
 
-**Why 4 passes instead of 1?**
+**Why two models in parallel instead of one?**
 
-Each pass catches different error classes:
+**The problem with self-verification:** A model checking its own work inherits the same blind spots that produced the error. It will rationalize mistakes rather than catch them.
 
-1. **Citation grounding** (deterministic): Catches "make up a plausible answer" hallucinations
-2. **LLM-as-judge** (statistical): Catches tone issues, incomplete reasoning, missing disclaimers
-3. **Deterministic domain rules** (coded logic): Catches clinical errors LLMs can't reliably detect (drug interactions, abnormal vitals)
-4. **Cross-source consistency** (heuristic): Catches EHR data quality issues (duplicate records, conflicting entries)
+**Two-model approach:**
+- **Sonnet** (generator): Produces response with structured output schema enforcing citation IDs for every claim
+- **Haiku** (verifier): Different prompt, different role—checks for hallucinations, missing citations, domain rule violations
 
-Running all 4 in sequence means failures early in the stack (missing citations) short-circuit—no need to run expensive LLM-as-judge if basic validation fails.
+Running in parallel means both complete in ~1-2 seconds. User sees no added latency vs. single-model approach.
 
-**Buffer-Verify-Stream pattern:**
+**Verification flow:**
 ```
-User query → Router → DAG execution → Buffer full response →
-  Pass 1 (citations) → Pass 2 (LLM judge) → Pass 3 (domain rules) → Pass 4 (consistency) →
-  Stream to user
+User query → Router → DAG execution →
+  ├─ Sonnet generates response (with citations)
+  └─ Haiku verifies response (parallel)
+       ↓
+  Both complete → Stream to user
 ```
 
-All verification completes before the user sees the first token. Latency cost is acceptable (200-400ms) given the risk reduction.
+If Haiku flags violations (missing citation, contraindicated drug), response is blocked or warning banner added before streaming.
 
 ---
 
@@ -143,12 +143,12 @@ No writes happen without explicit user approval. Draft → Review → Confirm pa
 
 **What's in scope:**
 - Audit log (Postgres): encrypted at rest, append-only, hash-chained
-- Langfuse trace logs: HIPAA-compliant region, BAA in place
+- Langfuse trace logs: redacted (resource IDs only, no PHI)
 
 **What's out of scope (no PHI storage):**
-- Redis cache: stores FHIR URLs and metadata only (e.g., "Encounter/123", "last updated: 2026-04-28T10:00Z")
+- Redis cache: stores FHIR URLs and metadata only (e.g., "Patient/123", "last_encounter_date: 2026-04-28"), 15-minute TTL
 - Agent service memory: stateless, no session storage
-- LLM provider: Claude (Anthropic has BAA, but we still avoid sending unnecessary PHI—use resource IDs in prompts, not full patient narratives)
+- LLM provider: Anthropic Claude (assumes BAA in place per project requirements; minimize PHI in prompts—use resource IDs, not full patient narratives)
 
 **Why this matters:** Smaller HIPAA surface area = less compliance overhead, lower breach risk, simpler audit trail.
 
@@ -157,14 +157,14 @@ No writes happen without explicit user approval. Draft → Review → Confirm pa
 ## Latency Constraints
 
 **Target latency:**
-- Cached queries (FAQ pre-gen): <200ms
+- Pre-warmed patient context (FHIR URLs cached): <1s for workflow execution
 - Cold queries (FHIR fetch + LLM + verification): <3s for p95
 - Write confirmations: <1s for draft generation
 
 **How we hit these targets:**
-1. Parallel DAG node execution (fetch vitals + meds + labs concurrently)
-2. Pre-warm pipeline for common queries
-3. Haiku for verification (50-100ms vs Sonnet's 200-400ms)
+1. Pre-warm patient context on schedule load (eliminates cold FHIR fetch delay)
+2. Parallel DAG node execution (fetch vitals + meds + labs concurrently)
+3. Parallel verification (Sonnet + Haiku run simultaneously, not sequential)
 4. Rate limit FHIR calls per request (max 10) to prevent runaway latency
 
 **Tradeoff:** Strict FHIR call limits mean some complex queries can't be answered in one request. Acceptable—prefer bounded latency over unbounded flexibility.
