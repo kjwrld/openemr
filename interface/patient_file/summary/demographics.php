@@ -2067,6 +2067,229 @@ $oemr_ui = new OemrUI($arrOeUiSettings);
             }
         });
     </script>
+
+    <!-- Clinical Co-Pilot Integration -->
+    <style>
+        .copilot-toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 16px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+            z-index: 10000;
+            display: none;
+            align-items: center;
+            gap: 12px;
+            min-width: 320px;
+            animation: slideInRight 0.3s ease-out;
+        }
+
+        .copilot-toast.show {
+            display: flex;
+        }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .toast-icon {
+            font-size: 20px;
+        }
+
+        .toast-content {
+            flex: 1;
+        }
+
+        .toast-title {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 2px;
+        }
+
+        .toast-message {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .toast-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+
+        .toast-close:hover {
+            opacity: 1;
+        }
+
+        .copilot-btn {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            transition: transform 0.2s;
+            z-index: 9998;
+        }
+        .copilot-btn:hover {
+            transform: scale(1.1);
+        }
+        .copilot-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+        }
+        .copilot-modal.active {
+            display: flex;
+        }
+        .copilot-content {
+            background: white;
+            width: 90%;
+            max-width: 500px;
+            height: 90%;
+            max-height: 700px;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .copilot-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .copilot-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .copilot-close {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            font-size: 24px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        .copilot-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        .copilot-iframe {
+            flex: 1;
+            border: none;
+            width: 100%;
+        }
+    </style>
+
+    <!-- Pre-Warming Toast Notification -->
+    <div class="copilot-toast" id="prewarm-toast">
+        <div class="toast-icon">⚡</div>
+        <div class="toast-content">
+            <div class="toast-title">Patient Context Ready</div>
+            <div class="toast-message">Background job pre-loaded FHIR data for faster responses</div>
+        </div>
+        <button class="toast-close" onclick="closeToast()">×</button>
+    </div>
+
+    <button class="copilot-btn" onclick="openCopilot()" title="Open Clinical Co-Pilot">
+        🤖
+    </button>
+
+    <div class="copilot-modal" id="copilot-modal" onclick="closeCopilotOnOverlay(event)">
+        <div class="copilot-content">
+            <div class="copilot-header">
+                <div class="copilot-title">🩺 Clinical Co-Pilot</div>
+                <button class="copilot-close" onclick="closeCopilot()">×</button>
+            </div>
+            <iframe id="copilot-iframe" class="copilot-iframe"></iframe>
+        </div>
+    </div>
+
+    <script>
+        // Get patient ID from PHP
+        const copilotPatientId = <?php echo json_encode($pid ?? 1); ?>;
+        const copilotAgentUrl = 'http://127.0.0.1:8000'; // TODO: Update with deployed URL
+
+        // Show pre-warming toast on page load (spoofed for demo)
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const toast = document.getElementById('prewarm-toast');
+                toast.classList.add('show');
+
+                // Auto-hide after 5 seconds
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                }, 5000);
+            }, 1500); // Show after 1.5 seconds to simulate background job completing
+        });
+
+        function closeToast() {
+            const toast = document.getElementById('prewarm-toast');
+            toast.classList.remove('show');
+        }
+
+        function openCopilot() {
+            const modal = document.getElementById('copilot-modal');
+            const iframe = document.getElementById('copilot-iframe');
+
+            // Load chat widget with patient ID
+            iframe.src = copilotAgentUrl + '/static/chat.html?pid=' + copilotPatientId;
+            modal.classList.add('active');
+        }
+
+        function closeCopilot() {
+            const modal = document.getElementById('copilot-modal');
+            modal.classList.remove('active');
+        }
+
+        function closeCopilotOnOverlay(event) {
+            if (event.target.id === 'copilot-modal') {
+                closeCopilot();
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeCopilot();
+            }
+        });
+    </script>
 </body>
 <?php $ed->dispatch(new RenderEvent($pid), RenderEvent::EVENT_RENDER_POST_PAGELOAD); ?>
 </html>

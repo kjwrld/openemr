@@ -150,20 +150,39 @@ python agent/evals/run_evals.py
 pytest --cov=agent --cov-report=term-missing
 ```
 
-## Known Gaps (deferred to Final)
+## ⚡ SCOPE CHANGE: UI Required Tonight
 
-- No OpenEMR session integration (standalone service)
-- No UI (JSON-only endpoint)
-- Single use case only
-- No clinical rules verifier (just citation check)
-- No Langfuse (logs to stdout only)
-- No persistent audit log
-- No multi-turn conversation
+**NEW REQUIREMENT:** Build embedded chat widget in OpenEMR interface for demo video.
 
-## Timeline
+### UI Components to Build Tonight:
 
-- **Now - 5:30 PM**: Agents build in parallel (Backend, Tests, Research, Deploy prep)
-- **5:30 PM - 6:30 PM**: Integration testing, fix issues
-- **6:30 PM - 7:30 PM**: Deploy to Railway, verify
-- **7:30 PM - 8:30 PM**: Run evals, record demo video
-- **8:30 PM - 11:59 PM**: Buffer for debugging + README updates
+1. **Simple Chat Widget (`public/chat-widget.html`)**
+   - Standalone HTML page with embedded JavaScript
+   - Can be iframe'd into OpenEMR or opened separately
+   - Chat interface with message history
+   - Display citations inline
+   - Patient ID input field
+
+2. **Minimal Integration**
+   - No OpenEMR session auth (use hardcoded patient_id for demo)
+   - Widget calls agent service directly
+   - For demo video: show side-by-side (OpenEMR patient screen + chat widget)
+
+### Deferred to Final
+
+- Full OpenEMR session integration with JWT
+- Embedded widget card in patient summary page
+- 3 more use cases
+- Clinical rules verifier
+- Langfuse observability
+- Postgres audit log
+- Multi-turn conversation state
+
+## Timeline (UPDATED)
+
+- **Now - 6:00 PM**: Build chat widget UI
+- **6:00 PM - 7:00 PM**: Integration testing, verify widget works
+- **7:00 PM - 8:00 PM**: Deploy to Railway (both agent + serve widget)
+- **8:00 PM - 9:00 PM**: Run evals, test end-to-end
+- **9:00 PM - 10:30 PM**: Record demo video (show widget + OpenEMR side-by-side)
+- **10:30 PM - 11:59 PM**: Buffer for issues

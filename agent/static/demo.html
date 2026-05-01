@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenEMR + Clinical Co-Pilot - Integration Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .demo-header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .demo-header h1 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .demo-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .container {
+            display: flex;
+            height: calc(100vh - 60px);
+        }
+
+        .openemr-panel {
+            flex: 1;
+            background: #f8f9fa;
+            border-right: 2px solid #e1e8ed;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            background: white;
+            padding: 12px 20px;
+            border-bottom: 1px solid #e1e8ed;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .openemr-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .patient-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .patient-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .patient-name {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1e3a8a;
+            margin-bottom: 5px;
+        }
+
+        .patient-id {
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        .patient-age {
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .info-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #6b7280;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .info-value {
+            font-size: 15px;
+            color: #111827;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1e3a8a;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .vitals-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .vital-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .vital-label {
+            font-size: 11px;
+            color: #64748b;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .vital-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #1e293b;
+        }
+
+        .vital-unit {
+            font-size: 12px;
+            color: #64748b;
+            margin-left: 2px;
+        }
+
+        .problem-list {
+            list-style: none;
+        }
+
+        .problem-item {
+            background: #fef3c7;
+            border-left: 3px solid #f59e0b;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .med-list {
+            list-style: none;
+        }
+
+        .med-item {
+            background: #dbeafe;
+            border-left: 3px solid #3b82f6;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .agent-panel {
+            width: 450px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+        }
+
+        .agent-iframe {
+            flex: 1;
+            border: none;
+            width: 100%;
+            height: 100%;
+        }
+
+        .toggle-agent {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            transition: transform 0.2s;
+            display: none;
+            z-index: 1000;
+        }
+
+        .toggle-agent:hover {
+            transform: scale(1.1);
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            width: 90%;
+            max-width: 500px;
+            height: 90%;
+            max-height: 700px;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .close-modal {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            font-size: 24px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .close-modal:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .modal-iframe {
+            flex: 1;
+            border: none;
+            width: 100%;
+        }
+
+        @media (max-width: 1200px) {
+            .agent-panel {
+                display: none !important;
+            }
+            .toggle-agent {
+                display: block;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-header">
+        <h1>🏥 OpenEMR + Clinical Co-Pilot Integration</h1>
+        <div class="demo-badge">DEMO - Early Submission</div>
+    </div>
+
+    <div class="container">
+        <!-- OpenEMR Patient Summary Panel -->
+        <div class="openemr-panel">
+            <div class="panel-header">
+                📋 Patient Summary
+            </div>
+            <div class="openemr-content">
+                <!-- Patient Demographics Card -->
+                <div class="patient-card">
+                    <div class="patient-header">
+                        <div>
+                            <div class="patient-name">John Doe</div>
+                            <div class="patient-id">MRN: 000001 | PID: 1</div>
+                        </div>
+                        <div class="patient-age">62 years old</div>
+                    </div>
+
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <div class="info-label">Date of Birth</div>
+                            <div class="info-value">01/15/1962</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Sex</div>
+                            <div class="info-value">Male</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Phone</div>
+                            <div class="info-value">(555) 123-4567</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Next Appointment</div>
+                            <div class="info-value">Today - Annual Physical</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Vitals Card -->
+                <div class="patient-card">
+                    <div class="section-title">🩺 Most Recent Vitals</div>
+                    <div class="vitals-grid">
+                        <div class="vital-box">
+                            <div class="vital-label">Blood Pressure</div>
+                            <div class="vital-value">145<span class="vital-unit">/</span>90</div>
+                        </div>
+                        <div class="vital-box">
+                            <div class="vital-label">Heart Rate</div>
+                            <div class="vital-value">78<span class="vital-unit">bpm</span></div>
+                        </div>
+                        <div class="vital-box">
+                            <div class="vital-label">Temperature</div>
+                            <div class="vital-value">98.6<span class="vital-unit">°F</span></div>
+                        </div>
+                        <div class="vital-box">
+                            <div class="vital-label">Weight</div>
+                            <div class="vital-value">185<span class="vital-unit">lbs</span></div>
+                        </div>
+                        <div class="vital-box">
+                            <div class="vital-label">Height</div>
+                            <div class="vital-value">5'10"</div>
+                        </div>
+                        <div class="vital-box">
+                            <div class="vital-label">BMI</div>
+                            <div class="vital-value">26.5</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Problem List Card -->
+                <div class="patient-card">
+                    <div class="section-title">⚠️ Active Problem List</div>
+                    <ul class="problem-list">
+                        <li class="problem-item">Hypertension, Essential (Primary)</li>
+                        <li class="problem-item">Type 2 Diabetes Mellitus</li>
+                        <li class="problem-item">Hyperlipidemia</li>
+                    </ul>
+                </div>
+
+                <!-- Medications Card -->
+                <div class="patient-card">
+                    <div class="section-title">💊 Active Medications</div>
+                    <ul class="med-list">
+                        <li class="med-item"><strong>Lisinopril 10mg</strong> - Once daily (Started 2 weeks ago)</li>
+                        <li class="med-item"><strong>Metformin 1000mg</strong> - Twice daily</li>
+                        <li class="med-item"><strong>Atorvastatin 20mg</strong> - Once daily at bedtime</li>
+                    </ul>
+                </div>
+
+                <!-- Recent Labs Card -->
+                <div class="patient-card">
+                    <div class="section-title">🧪 Recent Lab Results</div>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <div class="info-label">HbA1c</div>
+                            <div class="info-value">6.8% (3 months ago)</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">LDL Cholesterol</div>
+                            <div class="info-value">95 mg/dL</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">eGFR</div>
+                            <div class="info-value">78 mL/min</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Last Lab Date</div>
+                            <div class="info-value">3 months ago</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Clinical Co-Pilot Agent Panel -->
+        <div class="agent-panel">
+            <iframe src="chat.html" class="agent-iframe"></iframe>
+        </div>
+    </div>
+
+    <button class="toggle-agent" onclick="toggleAgent()" title="Open Clinical Co-Pilot">
+        🤖
+    </button>
+
+    <!-- Modal for smaller screens -->
+    <div class="modal-overlay" id="modal-overlay" onclick="closeModalOnOverlay(event)">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">🩺 Clinical Co-Pilot</div>
+                <button class="close-modal" onclick="closeModal()">×</button>
+            </div>
+            <iframe src="chat.html" class="modal-iframe"></iframe>
+        </div>
+    </div>
+
+    <script>
+        function toggleAgent() {
+            const modal = document.getElementById('modal-overlay');
+            modal.classList.add('active');
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('modal-overlay');
+            modal.classList.remove('active');
+        }
+
+        function closeModalOnOverlay(event) {
+            // Close if clicking the overlay background (not the modal content)
+            if (event.target.id === 'modal-overlay') {
+                closeModal();
+            }
+        }
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+            }
+        });
+
+        // Auto-adjust patient ID in iframe when loaded
+        window.addEventListener('load', () => {
+            console.log('Demo page loaded - Chat widget ready for Patient ID: 1');
+        });
+    </script>
+</body>
+</html>
