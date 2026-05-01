@@ -2244,7 +2244,7 @@ $oemr_ui = new OemrUI($arrOeUiSettings);
     <script>
         // Get patient ID from PHP
         const copilotPatientId = <?php echo json_encode($pid ?? 1); ?>;
-        const copilotAgentUrl = 'http://127.0.0.1:8000'; // TODO: Update with deployed URL
+        const copilotAgentUrl = 'https://copilot-agent-production-3fdf.up.railway.app';
 
         // Show pre-warming toast on page load (spoofed for demo)
         window.addEventListener('load', () => {
