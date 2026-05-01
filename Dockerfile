@@ -13,5 +13,4 @@ RUN chown -R apache:root /var/www/localhost/htdocs/openemr/interface/patient_fil
 # Expose standard OpenEMR ports
 EXPOSE 80 443
 
-# Use official OpenEMR entrypoint
-CMD ["/root/devtools", "startup"]
+# Inherit CMD/ENTRYPOINT from base image
