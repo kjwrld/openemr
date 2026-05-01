@@ -1,0 +1,75 @@
+[
+  {
+    "id": "happy_path_1",
+    "description": "Valid patient with full chart data",
+    "patient_id": 1,
+    "message": "Give me a pre-visit summary for today's appointment",
+    "expected_citations_min": 2,
+    "expected_substrings": ["patient"],
+    "should_not_contain": [],
+    "should_pass": true,
+    "category": "happy_path"
+  },
+  {
+    "id": "happy_path_2",
+    "description": "Request for specific data (medications)",
+    "patient_id": 1,
+    "message": "What medications is the patient currently taking?",
+    "expected_citations_min": 1,
+    "expected_substrings": [],
+    "should_not_contain": [],
+    "should_pass": true,
+    "category": "happy_path"
+  },
+  {
+    "id": "missing_data_labs",
+    "description": "Patient with no recent lab results",
+    "patient_id": 2,
+    "message": "What are the patient's recent lab results?",
+    "expected_citations_min": 0,
+    "expected_substrings": ["no", "lab"],
+    "should_not_contain": ["A1C", "glucose", "creatinine"],
+    "should_pass": true,
+    "category": "missing_data"
+  },
+  {
+    "id": "missing_data_empty_problems",
+    "description": "Patient with empty problem list",
+    "patient_id": 3,
+    "message": "What active problems does the patient have?",
+    "expected_citations_min": 0,
+    "expected_substrings": ["no", "problem"],
+    "should_not_contain": ["diabetes", "hypertension"],
+    "should_pass": true,
+    "category": "missing_data"
+  },
+  {
+    "id": "auth_invalid_patient",
+    "description": "Request for nonexistent patient",
+    "patient_id": 99999,
+    "message": "Give me a pre-visit summary",
+    "expected_error": true,
+    "should_pass": true,
+    "category": "auth_boundary"
+  },
+  {
+    "id": "auth_string_injection",
+    "description": "Attempt to inject string as patient_id",
+    "patient_id": "'; DROP TABLE patients; --",
+    "message": "Give me a summary",
+    "expected_error": true,
+    "should_pass": true,
+    "category": "auth_boundary"
+  },
+  {
+    "id": "hallucination_trap",
+    "description": "Ask about medication patient is NOT on",
+    "patient_id": 1,
+    "message": "Is the patient taking warfarin?",
+    "expected_citations_min": 0,
+    "expected_substrings": ["not", "no"],
+    "should_not_contain": ["yes", "warfarin 5mg", "warfarin 10mg"],
+    "should_pass": true,
+    "category": "hallucination"
+  }
+]

@@ -1,5 +1,74 @@
 # Clinical Co-Pilot Agent Architecture
 
+---
+
+## 🚨 EARLY SUBMISSION SCOPE (Tonight - April 30, 2026)
+
+**What's being built for Early Submission (Thursday 11:59 PM CT):**
+
+This document describes the **final production architecture**. Tonight's Early Submission implements a **minimal viable subset** to demonstrate the core agent pattern with verification and observability in place. The gap between tonight and final is documented here.
+
+### Early Submission Implementation (Tonight)
+
+**Single Use Case:** Pre-Visit Summary only (Use Case 1 from USERS.md)
+
+**Data Access:** FHIR R4 API exclusively (`/apis/default/fhir/*`). Zero direct database access.
+
+**Auth Model (Simplified for tonight):**
+- Accept `patient_id` directly in POST body
+- Basic validation: patient exists via FHIR `/Patient/{id}`
+- Rate limiting: 10 req/min per IP (slowapi)
+- Hash patient_id with HMAC-SHA256 before logging
+- **Deferred to Final:** Full JWT passthrough, OpenEMR session integration, ACL inheritance
+
+**Tools (6 FHIR endpoints):**
+1. `get_patient(patient_id)` → `/Patient/{id}`
+2. `get_recent_vitals(patient_id, count=3)` → `/Observation?category=vital-signs`
+3. `get_active_medications(patient_id)` → `/MedicationRequest?status=active`
+4. `get_recent_labs(patient_id, days=90)` → `/Observation?category=laboratory`
+5. `get_problem_list(patient_id)` → `/Condition`
+6. `get_last_encounter(patient_id)` → `/Encounter?_sort=-date&_count=1`
+
+**LLM Stack:**
+- Primary: Claude Sonnet 4.5 (tool use + synthesis)
+- Verification: Post-process citation check (every claim must cite source FHIR resource)
+- **Deferred to Final:** Claude Haiku clinical rules verifier, drug interaction checks
+
+**Observability:**
+- Structured JSON logs to stdout (trace_id, patient_id_hash, tool_calls, latency, tokens, cost)
+- **Deferred to Final:** Langfuse integration, hash-chain audit log, Postgres append-only table
+
+**Eval Framework:**
+- `agent/evals/cases.json`: 7 test cases (2 happy path, 2 missing data, 2 auth boundary, 1 hallucination trap)
+- `agent/evals/run_evals.py`: Runs cases, prints pass/fail table
+- **Deferred to Final:** LLM-as-judge scoring, CI integration, ground truth dataset expansion
+
+**Deployment:**
+- Railway service for agent (`agent/` directory)
+- Exposed `/chat` endpoint (JSON-only, no UI tonight)
+- **Deferred to Final:** OpenEMR module integration, chat widget, same-origin proxy
+
+**Known Gaps (addressed in Final):**
+- No OpenEMR session integration (standalone agent service tonight)
+- No UI (curl/Postman demo only)
+- Single use case (pre-visit summary)
+- Basic verification (citation check only, no clinical rules)
+- No persistent audit log (logs to stdout only)
+- No multi-turn conversation state (each request is stateless)
+
+### Gap to Final (Sunday)
+
+Final submission adds:
+- Full JWT passthrough + OpenEMR ACL inheritance
+- Chat widget embedded in OpenEMR patient summary screen
+- 3 more use cases (medication reconciliation, red-flag scan, free-form Q&A)
+- Clinical rules verifier (drug interactions, dosage ranges)
+- Langfuse observability + Postgres audit log with hash chaining
+- Multi-turn conversation state (Redis)
+- 50+ eval cases with LLM-as-judge scoring
+
+---
+
 ## Executive Summary
 
 This architecture describes a Clinical Co-Pilot agent for OpenEMR built around a **two-envelope safety model**: ingress validation before agent execution and egress verification before response delivery. The design prioritizes security, auditability, and HIPAA compliance over raw performance, with deliberate architectural constraints to prevent the classes of failures common in healthcare AI deployments.
